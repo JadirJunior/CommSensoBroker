@@ -1,40 +1,54 @@
 import dotenv from 'dotenv';
+import * as aedes from 'aedes';
+import * as server from 'net';
+import {api} from './api';
+
 
 dotenv.config();
 
-import client from './app';
+const sendMeasures = '/commsenso/send-measure'
 
-const topic = '/commsenso/sensores'
+const Aedes = aedes.createBroker();
+const Server = server.createServer(Aedes.handle);
+const port = process.env.PORT || 1883;
 
-client.on('connect', () => {
-    console.log('Connected to MQTT broker');
-
-    client.subscribe([topic], () => {
-        console.log(`Subscribed to topic: ${topic}`)
-        
-        client.publish(topic, JSON.stringify(`NodeJS MQTT client connected to broker`), {qos: 0, retain: false}, (error) => {
-            if (error)
-                console.log(error);
-        });
-
-    });
+Server.listen(port, () => {
+    console.log('Server started and listening on port ', port);
 });
 
-client.on('message', (topic, payload) => {
+
+Aedes.on('client', (client) => {
+    console.log(`${client.id} connected`);
+});
+
+Aedes.on('clientDisconnect', (client) => {
+    console.log(`${client.id} disconnected`);
+});
+
+
+Aedes.on('subscribe', (subscriptions, client) => {
+    console.log(`${client.id} subscribed to topics: ${subscriptions.map(sub => sub.topic).join(', ')}`);
+});
+
+
+Aedes.on('unsubscribe', (subscriptions, client) => {
+    console.log(`${client.id} unsubscribed to topics: ${subscriptions.map(sub => sub).join(', ')}`);
+});
+
+Aedes.on('publish', async (packet, client) => {
     try {
-        const message = payload.toString();
+        
+        if (packet.topic === sendMeasures) {
+            
+            const data = JSON.parse(packet.payload.toString());
+            console.log(data);
+            const ret = await api.sendMeasurement(data);
+            console.log(ret);
 
-        const data = JSON.parse(message);
+        }
 
-        console.log(data);
 
     } catch (error) {
-        throw new Error('Error');
-        console.log('Error parsing message', error)
+        console.log('a');
     }
-    
-});
-
-client.on('error', (error) => {
-    console.error('connection failed', error)
 });
