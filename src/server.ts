@@ -49,6 +49,6 @@ Aedes.on('publish', async (packet, client) => {
 
 
     } catch (error) {
-        console.log('a');
+        console.log(error);
     }
 });
