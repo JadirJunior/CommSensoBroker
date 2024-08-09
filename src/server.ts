@@ -3,6 +3,9 @@ import * as aedes from 'aedes';
 import * as server from 'net';
 import {api} from './api';
 
+import http from 'http';
+import ws from 'ws';
+
 
 dotenv.config();
 
@@ -16,6 +19,19 @@ Server.listen(port, () => {
     console.log('Server started and listening on port ', port);
 });
 
+
+const httpServer = http.createServer();
+const wsServer = new ws.Server({ server: httpServer });
+
+wsServer.on('connection', (socket) =>  {
+    const stream = ws.createWebSocketStream(socket);
+    Aedes.handle(stream);
+});
+
+const wsPort = 8888; // Porta para WebSocket
+httpServer.listen(wsPort, () => {
+    console.log('WebSocket server started and listening on port ', wsPort);
+});
 
 Aedes.on('client', (client) => {
     console.log(`${client.id} connected`);
