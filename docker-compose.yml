@@ -1,0 +1,14 @@
+services:
+  mqtt_broker:
+    container_name: commsenso_broker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: commsenso_broker:latest
+    ports:
+      - "1883:1883"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
