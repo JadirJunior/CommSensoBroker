@@ -64,6 +64,7 @@ Aedes.authenticate = async (client, username, password, done) => {
 			user === process.env.BROKER_SVC_USER &&
 			safeEqualSecret(pass, process.env.BROKER_SVC_PASS || "")
 		) {
+			console.log("Service Publisher connected");
 			attachCtx(client, { isServicePublisher: true } as Partial<ConnCtx>);
 			return done(null, true);
 		}
@@ -104,6 +105,7 @@ Aedes.authorizeSubscribe = (client, sub, done) => {
 
 		// ONBOARDING: só o próprio bootstrap
 		if (ctx?.isOnboarding) {
+			console.log("Onboardingg");
 			const allowed = `bootstrap/${ctx.deviceId}`;
 			return topic === allowed ? done(null, sub) : done(new Error("forbidden"));
 		}
@@ -124,6 +126,7 @@ Aedes.authorizePublish = (client, packet, done) => {
 		const topic = packet.topic?.toString() || "";
 		const ctx = getCtx(client ?? undefined);
 
+		console.log("Autorizando publish em", topic, "por", client?.id);
 		if (ctx?.isServicePublisher)
 			return topic.startsWith("bootstrap/")
 				? done(null)

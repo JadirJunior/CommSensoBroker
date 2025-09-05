@@ -5,7 +5,8 @@
     "main": "index.js",
     "scripts": {
         "dev": "npx nodemon src/server.ts --watch './src/' -e ts",
-        "test": "jest --runInBand",
+        "testDev": "dotenv -e .env.test npx nodemon src/server.ts --watch './src/' -e ts",
+        "test": "dotenv -e .env.test -- jest --runInBand",
         "compile": "npx tsc",
         "start": "node dist/server.js"
     },
@@ -34,6 +35,7 @@
         "@types/helmet": "^4.0.0",
         "@types/jest": "^30.0.0",
         "@types/morgan": "^1.9.9",
+        "dotenv-cli": "^10.0.0",
         "jest": "^30.1.3",
         "ts-jest": "^29.4.1",
         "ts-node": "^10.9.2",
