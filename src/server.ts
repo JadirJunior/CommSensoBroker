@@ -8,6 +8,7 @@ import ws from "ws";
 import { cfg } from "./config";
 import { attachCtx, ConnCtx, getCtx, ns } from "./utils/adapters";
 import { clearBootstrap, safeEqualSecret } from "./utils/utils";
+import { authorizePublish, authorizeSubscribe } from "./topics";
 
 dotenv.config();
 
@@ -36,40 +37,59 @@ httpServer.listen(cfg.mqtt.wsPort, () => {
 	);
 });
 
-/*
-Passos: 
-- Onboarding para primeiro acesso utilizando a rota de redeemDevice passando o code e o deviceId vindo do esp - OK
-- Autenticação e validação do dispositivo no broker mqtt para primeiro acesso - OK
-- Solicitação dos dados do device pelo broker - OK
-- Resposta com os dados solicitados ou erro de autorização - OK
-- Verificação de permissões para publicação e assinatura de tópicos - OK
-- Sessão do dispositivo validada com broker - OK
-- Recebimento dos dados e envio das medições por lote pra api
-*/
-
 Aedes.authenticate = async (client, username, password, done) => {
 	try {
+		/**
+		 * Tipos de sessão:
+		 * - Onboarding => Autenticação simples com deviceId na senha
+		 * - Service => Autenticação com usuário e senha do serviço (variáveis de ambiente do serviço)
+		 * - App => Autenticação com usuário do app e senha com JWT (API)
+		 * - Device => Autenticação com credenciais do dispositivo fornecidas no onboarding pela API
+		 */
+
 		const user = username?.toString() || "";
 		const pass = password?.toString() || "";
 		const deviceId = client.id || "";
 
+		console.log(`Client ${client.id} requesting auth as ${user}`);
+
 		// (A) Sessão de ONBOARDING
-		if (user === "onboarding" && deviceId) {
-			attachCtx(client, { deviceId, isOnboarding: true });
+		if (user === "onboarding" && pass) {
+			console.log("Onboarding");
+			attachCtx(client, { deviceId: pass, role: "onboarding" });
 			return done(null, true);
 		}
 
-		// (B) Sessão do Serviço: Permite publicação das credenciais para onboarding
+		// (B) Sessão do Serviço/API: Permite publicação das credenciais para onboarding
 		if (
 			user === process.env.BROKER_SVC_USER &&
 			safeEqualSecret(pass, process.env.BROKER_SVC_PASS || "")
 		) {
 			console.log("Service Publisher connected");
-			attachCtx(client, { isServicePublisher: true } as Partial<ConnCtx>);
+			attachCtx(client, { role: "service" } as Partial<ConnCtx>);
 			return done(null, true);
 		}
 
-		// (C) Sessão NORMAL: valida API
+		// (C) Sessão do aplicativo: verificar credenciais do app com a API
+		if (user === process.env.BROKER_APP_USER) {
+			console.log("App connecting");
+			const r = await api.authenticateApp({
+				username: user,
+				token: pass,
+			});
+			if (r?.status === 200) {
+				attachCtx(client, {
+					role: "app",
+					token: pass,
+				});
+				return done(null, true);
+			} else {
+				return done(null, false);
+			}
+		}
+
+		console.log("Device connecting");
+		// (D) Sessão NORMAL: valida API para o dispositivo
 		const r = await api.authenticateMqtt({
 			username: user,
 			password: pass,
@@ -77,11 +97,12 @@ Aedes.authenticate = async (client, username, password, done) => {
 		});
 
 		if (r?.status === 200 && r?.data?.deviceId) {
+			console.log("Device authenticated", r.data);
 			attachCtx(client, {
 				deviceId: r.data.deviceId,
 				tenantId: r.data.tenantId,
 				appId: r.data.appId,
-				isOnboarding: false,
+				role: "device",
 			});
 
 			clearBootstrap(Aedes, r.data.deviceId);
@@ -95,54 +116,51 @@ Aedes.authenticate = async (client, username, password, done) => {
 	}
 };
 
-Aedes.authorizeSubscribe = (client, sub, done) => {
+Aedes.authorizeSubscribe = async (client, sub, done) => {
 	try {
 		const topic = sub.topic?.toString() || "";
 		const ctx = getCtx(client ?? undefined);
-
-		// SERVICE: Serviço interno para salvar primeiras credenciais
-		if (ctx?.isServicePublisher) return done(new Error("forbidden"));
-
-		// ONBOARDING: só o próprio bootstrap
-		if (ctx?.isOnboarding) {
-			console.log("Onboardingg");
-			const allowed = `bootstrap/${ctx.deviceId}`;
-			return topic === allowed ? done(null, sub) : done(new Error("forbidden"));
-		}
-
 		if (!ctx) return done(new Error("unauthorized"));
-		const { cmd } = ns(ctx);
-		if (topic === cmd.slice(0, -1) || topic.startsWith(cmd)) {
-			return done(null, sub);
+
+		if (ctx.role === "app") {
+			const r = await api.authorizeMqtt({
+				token: ctx.token!,
+				action: "subscribe",
+				topic,
+			});
+			console.log("Response: ", r);
+			if (r?.status === 200 && r.data?.allow) return done(null, sub);
+			return done(new Error("forbidden"));
 		}
-		return done(new Error("forbidden"));
+
+		if (!authorizeSubscribe(ctx, topic)) return done(new Error("forbidden"));
+
+		return done(null, sub);
 	} catch {
 		return done(new Error("forbidden"));
 	}
 };
 
-Aedes.authorizePublish = (client, packet, done) => {
+Aedes.authorizePublish = async (client, packet, done) => {
 	try {
 		const topic = packet.topic?.toString() || "";
 		const ctx = getCtx(client ?? undefined);
 
-		console.log("Autorizando publish em", topic, "por", client?.id);
-		if (ctx?.isServicePublisher)
-			return topic.startsWith("bootstrap/")
-				? done(null)
-				: done(new Error("forbidden"));
-
-		if (ctx?.isOnboarding) return done(new Error("forbidden"));
 		if (!ctx) return done(new Error("unauthorized"));
 
-		const n = ns(ctx);
-		const ok =
-			topic === n.birth ||
-			topic === n.state ||
-			topic === n.measure ||
-			topic.startsWith(n.evt);
+		if (ctx.role === "app") {
+			const r = await api.authorizeMqtt({
+				token: ctx.token!,
+				action: "publish",
+				topic,
+			});
+			if (r?.status === 200 && r.data?.allow) return done(null);
+			return done(new Error("forbidden"));
+		}
 
-		return ok ? done(null) : done(new Error("forbidden"));
+		if (!authorizePublish(ctx, topic)) return done(new Error("forbidden"));
+
+		return done(null);
 	} catch {
 		return done(new Error("forbidden"));
 	}

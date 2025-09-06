@@ -41,8 +41,30 @@ export const api = {
 		password: string;
 	}) =>
 		requests.post(
-			"internal/mqtt/auth",
+			"internal/mqtt/auth-device",
 			{ client_id: deviceId, username, password },
+			cfg.api.brokerToken
+		),
+
+	authenticateApp: ({ username, token }: { username: string; token: string }) =>
+		requests.post(
+			"internal/mqtt/auth-app",
+			{ username, token },
+			cfg.api.brokerToken
+		),
+
+	authorizeMqtt: ({
+		token,
+		action,
+		topic,
+	}: {
+		token: string;
+		action: string;
+		topic: string;
+	}) =>
+		requests.post(
+			"internal/mqtt/authorize",
+			{ token, action, topic },
 			cfg.api.brokerToken
 		),
 };

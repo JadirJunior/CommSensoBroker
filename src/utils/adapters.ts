@@ -1,11 +1,14 @@
 import * as aedes from "aedes";
 
+export type CtxRoles = "onboarding" | "service" | "app" | "device";
+
 export type ConnCtx = {
 	deviceId: string;
 	tenantId: string;
 	appId: string;
-	isOnboarding?: boolean;
-	isServicePublisher?: boolean;
+
+	token?: string;
+	role: CtxRoles;
 };
 
 export const attachCtx = (client: aedes.Client, ctx: Partial<ConnCtx>) => {
@@ -21,10 +24,10 @@ export const ns = (ctx: ConnCtx) => {
 	return {
 		base,
 		bootstrap: `bootstrap/${ctx.deviceId}`,
-		birth: `${base}/birth`,
+		// birth: `${base}/birth`,
 		state: `${base}/state`,
 		measure: `${base}/measure`,
-		evt: `${base}/evt/`,
-		cmd: `${base}/cmd/`,
+		// evt: `${base}/evt/`,
+		cmd: `${base}/cmd`,
 	};
 };
