@@ -133,11 +133,13 @@ Aedes.authorizeSubscribe = async (client, sub, done) => {
 			return done(new Error("forbidden"));
 		}
 
-		if (!authorizeSubscribe(ctx, topic)) return done(new Error("forbidden"));
+		if (!authorizeSubscribe(ctx, topic)) return done(null, null);
 
 		return done(null, sub);
-	} catch {
-		return done(new Error("forbidden"));
+	} catch (error) {
+		console.error("authorizeSubscribe error:", error);
+		return done(null, null);
+		// return done(new Error("forbidden"));
 	}
 };
 
