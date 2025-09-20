@@ -194,12 +194,40 @@ Aedes.on("unsubscribe", (subscriptions, client) => {
 
 Aedes.on("publish", async (packet, client) => {
 	try {
-		if (packet.topic === sendMeasures) {
-			const data = JSON.parse(packet.payload.toString());
-			console.log(data);
-			const ret = await api.sendMeasurement(data);
-			console.log(ret);
+		const ctx = getCtx(client ?? undefined);
+
+		if (!ctx) return;
+
+		console.log(
+			`Message from ${client?.id || "BROKER"} on topic ${packet.topic}: ${
+				packet.payload
+			}`
+		);
+
+		const nx = ns(ctx);
+
+		// Se for mensagem de envio de medidas
+		switch (packet.topic) {
+			case nx.measure:
+				if (ctx.role !== "device") return;
+				const data = JSON.parse(packet.payload.toString());
+				console.log("Medida recebida", data);
+				const ret = await api.sendMeasurement({
+					...data,
+					deviceId: ctx.deviceId,
+					appId: ctx.appId,
+					tenantId: ctx.tenantId,
+				});
+				console.log(ret);
+				break;
 		}
+
+		// if (packet.topic === sendMeasures) {
+		// 	const data = JSON.parse(packet.payload.toString());
+		// 	console.log(data);
+		// 	const ret = await api.sendMeasurement(data);
+		// 	console.log(ret);
+		// }
 	} catch (error) {
 		console.log(error);
 	}

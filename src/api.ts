@@ -1,4 +1,4 @@
-import axios, { Axios, AxiosResponse } from "axios";
+import axios, { AxiosResponse } from "axios";
 import { QueryMeasure } from "./types/QueryMeasure";
 import { cfg } from "./config";
 
@@ -29,7 +29,7 @@ const requests = {
 
 export const api = {
 	sendMeasurement: (data: {}): Promise<QueryMeasure | any> =>
-		requests.post("measure", data),
+		requests.post("measure", data, cfg.api.brokerToken),
 
 	authenticateMqtt: ({
 		deviceId,
