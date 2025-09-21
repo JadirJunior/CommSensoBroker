@@ -12,8 +12,6 @@ import { authorizePublish, authorizeSubscribe } from "./topics";
 
 dotenv.config();
 
-const sendMeasures = "/commsenso/send-measure";
-
 const Aedes = aedes.createBroker();
 const Server = server.createServer(Aedes.handle);
 const port = cfg.mqtt.tcpPort;
@@ -97,7 +95,6 @@ Aedes.authenticate = async (client, username, password, done) => {
 		});
 
 		if (r?.status === 200 && r?.data?.deviceId) {
-			console.log("Device authenticated", r.data);
 			attachCtx(client, {
 				deviceId: r.data.deviceId,
 				tenantId: r.data.tenantId,
@@ -128,7 +125,6 @@ Aedes.authorizeSubscribe = async (client, sub, done) => {
 				action: "subscribe",
 				topic,
 			});
-			console.log("Response: ", r);
 			if (r?.status === 200 && r.data?.allow) return done(null, sub);
 			return done(new Error("forbidden"));
 		}
@@ -198,11 +194,11 @@ Aedes.on("publish", async (packet, client) => {
 
 		if (!ctx) return;
 
-		console.log(
-			`Message from ${client?.id || "BROKER"} on topic ${packet.topic}: ${
-				packet.payload
-			}`
-		);
+		// console.log(
+		// 	`Message from ${client?.id || "BROKER"} on topic ${packet.topic}: ${
+		// 		packet.payload
+		// 	}`
+		// );
 
 		const nx = ns(ctx);
 

@@ -20,8 +20,6 @@ export const authorizePublish = (ctx: ConnCtx, topic: string) => {
 export const authorizeSubscribe = (ctx: ConnCtx, topic: string) => {
 	const n = ns(ctx);
 
-	console.log("Authorize subscribe", ctx.role, topic, n);
-
 	switch (ctx.role) {
 		case "onboarding":
 			return topic === `bootstrap/${ctx.deviceId}`;
