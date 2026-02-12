@@ -100,21 +100,31 @@ Aedes.authenticate = async (client, username, password, done) => {
 			mqttClientId,
 		});
 
-		if (r?.status === 200 && r?.data) {
-			attachCtx(client, {
-				mqttClientId,
-				deviceScenarioId: r.data.deviceScenarioId,
-				deviceId: r.data.deviceId,
-				tenantId: r.data.tenantId,
-				scenarioId: r.data.scenarioId,
-				role: "device",
-			});
+		const data = r.data;
 
-			clearBootstrap(Aedes, mqttClientId);
-			return done(null, true);
+		if (r?.status !== 200 || !data) {
+			console.warn(
+				`Authentication failed for device ${mqttClientId}: ${r?.data?.error || "Unknown error"}`,
+			);
+			return done(null, false);
 		}
 
-		return done(null, false);
+		if (data.status !== 200) {
+			console.warn(`Authentication error: ${data.error || "Unknown error"}`);
+			return done(null, false);
+		}
+
+		attachCtx(client, {
+			mqttClientId,
+			deviceScenarioId: r.data.deviceScenarioId,
+			deviceId: r.data.deviceId,
+			tenantId: r.data.tenantId,
+			scenarioId: r.data.scenarioId,
+			role: "device",
+		});
+
+		clearBootstrap(Aedes, mqttClientId);
+		return done(null, true);
 	} catch (e) {
 		console.error("authenticate error:", e);
 		return done(null, false);
@@ -171,7 +181,10 @@ Aedes.authorizePublish = async (client, packet, done) => {
 			return done(new Error("forbidden"));
 		}
 
-		if (!authorizePublish(ctx, topic)) return done(new Error("forbidden"));
+		if (!authorizePublish(ctx, topic)) {
+			console.warn(`Publish forbidden for ${ctx.role}: ${topic}`);
+			return done(new Error("forbidden"));
+		}
 
 		return done(null);
 	} catch {
