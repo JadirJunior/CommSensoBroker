@@ -32,39 +32,43 @@ export const api = {
 		requests.post("measure", data, cfg.api.brokerToken),
 
 	authenticateMqtt: ({
-		deviceId,
+		mqttClientId,
 		username,
 		password,
 	}: {
-		deviceId: string;
+		mqttClientId: string;
 		username: string;
 		password: string;
 	}) =>
 		requests.post(
 			"internal/mqtt/auth-device",
-			{ client_id: deviceId, username, password },
-			cfg.api.brokerToken
+			{ mqtt_client_id: mqttClientId, username, password },
+			cfg.api.brokerToken,
 		),
 
 	authenticateApp: ({ username, token }: { username: string; token: string }) =>
 		requests.post(
 			"internal/mqtt/auth-app",
 			{ username, token },
-			cfg.api.brokerToken
+			cfg.api.brokerToken,
 		),
 
 	authorizeMqtt: ({
 		token,
 		action,
 		topic,
+		tenantId,
+		scenarioId,
 	}: {
 		token: string;
 		action: string;
 		topic: string;
+		tenantId?: string;
+		scenarioId?: string;
 	}) =>
 		requests.post(
 			"internal/mqtt/authorize",
-			{ token, action, topic },
-			cfg.api.brokerToken
+			{ token, action, topic, tenant_id: tenantId, scenario_id: scenarioId },
+			cfg.api.brokerToken,
 		),
 };

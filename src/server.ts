@@ -31,7 +31,7 @@ wsServer.on("connection", (socket) => {
 httpServer.listen(cfg.mqtt.wsPort, () => {
 	console.log(
 		"WebSocket server started and listening on port ",
-		cfg.mqtt.wsPort
+		cfg.mqtt.wsPort,
 	);
 });
 
@@ -47,14 +47,17 @@ Aedes.authenticate = async (client, username, password, done) => {
 
 		const user = username?.toString() || "";
 		const pass = password?.toString() || "";
-		const deviceId = client.id || "";
+		const mqttClientId = client.id || "";
 
-		console.log(`Client ${client.id} requesting auth as ${user}`);
+		console.log(`Client ${mqttClientId} requesting auth as ${user}`);
 
 		// (A) Sessão de ONBOARDING
 		if (user === "onboarding" && pass) {
 			console.log("Onboarding");
-			attachCtx(client, { deviceId: pass, role: "onboarding" });
+			attachCtx(client, {
+				mqttClientId: pass,
+				role: "onboarding",
+			});
 			return done(null, true);
 		}
 
@@ -75,10 +78,13 @@ Aedes.authenticate = async (client, username, password, done) => {
 				username: user,
 				token: pass,
 			});
-			if (r?.status === 200) {
+			if (r?.status === 200 && r?.data) {
 				attachCtx(client, {
+					mqttClientId,
 					role: "app",
 					token: pass,
+					tenantId: r.data.tenantId,
+					scenarioId: r.data.scenarioId,
 				});
 				return done(null, true);
 			} else {
@@ -87,22 +93,24 @@ Aedes.authenticate = async (client, username, password, done) => {
 		}
 
 		console.log("Device connecting");
-		// (D) Sessão NORMAL: valida API para o dispositivo
+		// (D) Sessão DEVICE: valida com API usando mqttClientId
 		const r = await api.authenticateMqtt({
 			username: user,
 			password: pass,
-			deviceId,
+			mqttClientId,
 		});
 
-		if (r?.status === 200 && r?.data?.deviceId) {
+		if (r?.status === 200 && r?.data) {
 			attachCtx(client, {
+				mqttClientId,
+				deviceScenarioId: r.data.deviceScenarioId,
 				deviceId: r.data.deviceId,
 				tenantId: r.data.tenantId,
-				appId: r.data.appId,
+				scenarioId: r.data.scenarioId,
 				role: "device",
 			});
 
-			clearBootstrap(Aedes, r.data.deviceId);
+			clearBootstrap(Aedes, mqttClientId);
 			return done(null, true);
 		}
 
@@ -119,23 +127,30 @@ Aedes.authorizeSubscribe = async (client, sub, done) => {
 		const ctx = getCtx(client ?? undefined);
 		if (!ctx) return done(new Error("unauthorized"));
 
+		// App: valida wildcards com a API
 		if (ctx.role === "app") {
 			const r = await api.authorizeMqtt({
 				token: ctx.token!,
 				action: "subscribe",
 				topic,
+				tenantId: ctx.tenantId,
+				scenarioId: ctx.scenarioId,
 			});
 			if (r?.status === 200 && r.data?.allow) return done(null, sub);
+			console.warn(`App subscription forbidden: ${topic}`);
 			return done(new Error("forbidden"));
 		}
 
-		if (!authorizeSubscribe(ctx, topic)) return done(null, null);
+		// Outras roles: valida localmente
+		if (!authorizeSubscribe(ctx, topic)) {
+			console.warn(`Subscription forbidden for ${ctx.role}: ${topic}`);
+			return done(new Error("forbidden"));
+		}
 
 		return done(null, sub);
 	} catch (error) {
 		console.error("authorizeSubscribe error:", error);
-		return done(null, null);
-		// return done(new Error("forbidden"));
+		return done(new Error("forbidden"));
 	}
 };
 
@@ -176,7 +191,7 @@ Aedes.on("subscribe", (subscriptions, client) => {
 	console.log(
 		`${client.id} subscribed to topics: ${subscriptions
 			.map((sub) => sub.topic)
-			.join(", ")}`
+			.join(", ")}`,
 	);
 });
 
@@ -184,7 +199,7 @@ Aedes.on("unsubscribe", (subscriptions, client) => {
 	console.log(
 		`${client.id} unsubscribed to topics: ${subscriptions
 			.map((sub) => sub)
-			.join(", ")}`
+			.join(", ")}`,
 	);
 });
 
@@ -194,37 +209,40 @@ Aedes.on("publish", async (packet, client) => {
 
 		if (!ctx) return;
 
+		const topic = packet.topic?.toString() || "";
+		const nx = ns(ctx);
+
+		// Console log para debug (descomente se necessário)
 		// console.log(
-		// 	`Message from ${client?.id || "BROKER"} on topic ${packet.topic}: ${
-		// 		packet.payload
+		// 	`Message from ${client?.id || "BROKER"} on topic ${topic}: ${
+		// 		packet.payload.toString().slice(0, 100)
 		// 	}`
 		// );
 
-		const nx = ns(ctx);
+		// Processa mensagem de medidas do dispositivo
+		if (topic === nx.measure && ctx.role === "device") {
+			const data = JSON.parse(packet.payload.toString());
+			console.log(`Measure received from ${ctx.mqttClientId}`);
 
-		// Se for mensagem de envio de medidas
-		switch (packet.topic) {
-			case nx.measure:
-				if (ctx.role !== "device") return;
-				const data = JSON.parse(packet.payload.toString());
-				console.log("Medida recebida", data);
-				const ret = await api.sendMeasurement({
-					...data,
-					deviceId: ctx.deviceId,
-					appId: ctx.appId,
-					tenantId: ctx.tenantId,
-				});
-				console.log(ret);
-				break;
+			await api.sendMeasurement({
+				...data,
+				mqttClientId: ctx.mqttClientId,
+				deviceScenarioId: ctx.deviceScenarioId,
+				deviceId: ctx.deviceId,
+				tenantId: ctx.tenantId,
+				scenarioId: ctx.scenarioId,
+			});
+			return;
 		}
 
-		// if (packet.topic === sendMeasures) {
-		// 	const data = JSON.parse(packet.payload.toString());
-		// 	console.log(data);
-		// 	const ret = await api.sendMeasurement(data);
-		// 	console.log(ret);
-		// }
+		// Processa estado do dispositivo
+		if (topic === nx.state && ctx.role === "device") {
+			const data = JSON.parse(packet.payload.toString());
+			console.log(`State update from ${ctx.mqttClientId}`, data);
+			// TODO: Implementar lógica de atualização de estado se necessário
+			return;
+		}
 	} catch (error) {
-		console.log(error);
+		console.error("publish error:", error);
 	}
 });
