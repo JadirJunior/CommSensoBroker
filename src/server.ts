@@ -5,6 +5,8 @@ import { api } from "./api";
 
 import http from "http";
 import ws from "ws";
+import tls from "tls";
+import fs from "fs";
 import { cfg } from "./config";
 import { attachCtx, ConnCtx, getCtx, ns } from "./utils/adapters";
 import { clearBootstrap, safeEqualSecret } from "./utils/utils";
@@ -19,6 +21,30 @@ const port = cfg.mqtt.tcpPort;
 Server.listen(port, () => {
 	console.log("Server started and listening on port ", port);
 });
+
+if (cfg.mqtt.tls.enabled) {
+	try {
+		const tlsOptions = {
+			key: fs.readFileSync(cfg.mqtt.tls.key),
+			cert: fs.readFileSync(cfg.mqtt.tls.cert),
+		};
+
+		const tlsServer = tls.createServer(tlsOptions, Aedes.handle);
+
+		tlsServer.listen(cfg.mqtt.tls.port, () => {
+			console.log(
+				"TLS server started and listening on port ",
+				cfg.mqtt.tls.port,
+			);
+		});
+
+		tlsServer.on("error", (err) => {
+			console.error("TLS Server error:", err);
+		});
+	} catch (error) {
+		console.error("Failed to start TLS server:", error);
+	}
+}
 
 const httpServer = http.createServer();
 const wsServer = new ws.Server({ server: httpServer });
