@@ -35,6 +35,7 @@ export const ns = (ctx: ConnCtx) => {
 		measure: `${base}/measure`,
 		cmd: `${ctx.mqttClientId}/cmd`,
 
+		ack: `${ctx.mqttClientId}/cmd/ack`,
 		// Padrões para apps (com wildcards) - validados por tenant/scenario
 		deviceAll: `${ctx.mqttClientId}/telemetry/#`,
 		tenantPattern:

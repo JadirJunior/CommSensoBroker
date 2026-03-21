@@ -55,6 +55,8 @@ export const authorizeSubscribe = (ctx: ConnCtx, topic: string) => {
 			if (topic === n.measure || topic === n.state) return true;
 			// Aceita wildcards que incluem telemetry
 			if (topic.match(/^\+\/telemetry\/(#|measure|state)$/)) return true;
+
+			if (topic === n.ack || topic.includes("/cmd/ack")) return true;
 			return false;
 
 		case "app":
